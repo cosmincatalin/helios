@@ -15,7 +15,6 @@ public class Reading {
     private Double fahrenheit = null;
 
     public Reading() {
-
     }
 
     public String getCity() {

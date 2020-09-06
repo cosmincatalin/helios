@@ -5,7 +5,6 @@ import com.typesafe.config.ConfigFactory;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.*;
-import org.apache.spark.sql.functions;
 import org.apache.spark.sql.api.java.UDF1;
 import org.apache.spark.sql.streaming.OutputMode;
 import org.apache.spark.sql.streaming.StreamingQueryException;
@@ -37,6 +36,7 @@ public class App {
             .builder()
             .appName("Helios")
             .master("local")
+            .config("spark.sql.streaming.schemaInference", true)
             .getOrCreate();
 
         spark.udf().register("PARSE", (UDF1<String, Row>) xml -> {
@@ -65,7 +65,15 @@ public class App {
             }
         ));
 
-        Dataset<Row> df = spark
+        Dataset<Row> statistics = spark
+            .readStream()
+            .option("multiLine", true)
+            .option("mode", "PERMISSIVE")
+            .json(conf.getString("statistics.location"))
+            .withColumn("updated_at_ts", functions.expr("TO_TIMESTAMP(updated_at_ts, 'yyyy-MM-dd‘T‘HH:mm:ss')"))
+            .withColumnRenamed("city", "city_s");
+
+        Dataset<Row> readings = spark
             .readStream()
             .format("kafka")
             .option("kafka.bootstrap.servers", conf.getString("kafka.bootstrap.servers"))
@@ -75,7 +83,7 @@ public class App {
             .selectExpr("CAST(value AS STRING) AS raw_xml")
             .withColumn("reading", functions.expr("PARSE(raw_xml)"));
 
-        df
+        readings
             .writeStream()
             .queryName("Back up data")
             .format("parquet")
@@ -84,13 +92,13 @@ public class App {
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 
-        df
+        readings
             .select("reading")
             .filter("reading IS NOT NULL")
             .groupBy("reading.city")
             .agg(functions.expr("COLLECT_LIST(STRUCT(reading.timestamp, reading.celsius, reading.fahrenheit)) AS readings"))
             .selectExpr("city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
-            .selectExpr("city", "reading.timestamp AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
+            .selectExpr("city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Live temperature")
             .outputMode(OutputMode.Update())
