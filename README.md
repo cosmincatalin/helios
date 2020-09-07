@@ -20,7 +20,7 @@ _**You can see the results of processing like this:**_
 
 #### Stopping the services
 
-`docker compose down` - This will also remove the containers.
+`docker-compose down` - This will also remove the containers.
 
 ##### Requirements
 
