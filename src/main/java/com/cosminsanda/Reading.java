@@ -13,6 +13,7 @@ public class Reading {
     private String city = null;
     private Double celsius = null;
     private Double fahrenheit = null;
+    private String country = null;
 
     public Reading() {
     }
@@ -50,5 +51,13 @@ public class Reading {
 
     public Double getCelsius() {
         return celsius;
+    }
+
+    public String getCountry() {
+        return country;
+    }
+
+    public void setCountry(String country) {
+        this.country = country;
     }
 }

@@ -19,7 +19,6 @@ import scala.concurrent.duration.Duration;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 import java.io.StringReader;
-import java.sql.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -48,7 +47,11 @@ public class App {
                 try {
                     saxParser.parse(new InputSource(new StringReader(xml)), readingHandler);
                     Reading reading = readingHandler.getReading();
+                    if (conf.hasPath("cities." + reading.getCity())) {
+                        reading.setCountry(conf.getString("cities." + reading.getCity()));
+                    }
                     return RowFactory.create(
+                        reading.getCountry(),
                         reading.getCity(),
                         reading.getTimestamp(),
                         reading.getCelsius(),
@@ -59,6 +62,7 @@ public class App {
                 }
                 return null;
             }, new StructType(new StructField[] {
+                new StructField("country", StringType, true, Metadata.empty()),
                 new StructField("city", StringType, false, Metadata.empty()),
                 new StructField("timestamp", TimestampType, false, Metadata.empty()),
                 new StructField("celsius", DoubleType, false, Metadata.empty()),
@@ -80,7 +84,7 @@ public class App {
             .selectExpr("raw_xml", "reading.city AS city", "reading.timestamp AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Back up data")
-            .foreach(new PostgreSink("jdbc:postgresql://localhost:5432/helios","postgres", ""))
+            .foreach(new PostgreSink(conf.getString("postgresql.url"),conf.getString("postgresql.user"), conf.getString("postgresql.pwd")))
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 
@@ -88,10 +92,10 @@ public class App {
             .select("reading")
             .filter("reading IS NOT NULL")
             .filter("reading.timestamp > DATE_SUB(NOW(), 3)")
-            .groupBy("reading.city")
+            .groupBy("reading.city", "reading.country")
             .agg(functions.expr("COLLECT_LIST(STRUCT(reading.timestamp, reading.celsius, reading.fahrenheit)) AS readings"))
-            .selectExpr("city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
-            .selectExpr("city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
+            .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
+            .selectExpr("country", "city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Live temperature")
             .outputMode(OutputMode.Complete())

@@ -1,11 +1,15 @@
 package com.cosminsanda;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.spark.sql.ForeachWriter;
 import org.apache.spark.sql.Row;
 
 import java.sql.*;
 
 public class PostgreSink extends ForeachWriter<Row> {
+
+    Logger logger = LogManager.getLogger(PostgreSink.class);
 
     private Connection connection;
     private final String url;
@@ -45,14 +49,12 @@ public class PostgreSink extends ForeachWriter<Row> {
                 "UPDATE readings SET active_flag = FALSE  WHERE city = ? AND active_flag = TRUE"
             );
             statementReconcile = connection.prepareStatement(
-                "SELECT active_from," +
-                    "(SELECT active_from FROM readings AS r2 WHERE r2.city = r1.city AND r2.active_from > r1.active_from ORDER BY r2.active_from LIMIT 1) AS new_active_to " +
-                    "FROM readings AS r1 " +
-                    "WHERE active_from IS NOT NULL AND city = ?" +
-                    "ORDER BY active_from DESC"
+                "UPDATE readings AS r1 SET active_to = " +
+                    "(SELECT active_from FROM readings AS r2 WHERE r2.city = r1.city AND r2.active_from > r1.active_from ORDER BY r2.active_from LIMIT 1) " +
+                    "WHERE active_from IS NOT NULL AND city = ?"
             );
         } catch (ClassNotFoundException | SQLException ex) {
-            ex.printStackTrace();
+            logger.error(ex);
             return false;
         }
         return true;
@@ -90,7 +92,7 @@ public class PostgreSink extends ForeachWriter<Row> {
                 statementReconcile.executeUpdate();
             }
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            logger.error(ex);
         }
     }
 
@@ -100,7 +102,7 @@ public class PostgreSink extends ForeachWriter<Row> {
             connection.commit();
             connection.close();
         } catch (SQLException ex) {
-            ex.printStackTrace();
+            logger.error(ex);
         }
     }
 }
