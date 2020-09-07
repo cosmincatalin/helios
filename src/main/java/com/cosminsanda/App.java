@@ -87,6 +87,7 @@ public class App {
         readings
             .select("reading")
             .filter("reading IS NOT NULL")
+            .filter("reading.timestamp > DATE_SUB(NOW(), 3)")
             .groupBy("reading.city")
             .agg(functions.expr("COLLECT_LIST(STRUCT(reading.timestamp, reading.celsius, reading.fahrenheit)) AS readings"))
             .selectExpr("city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
