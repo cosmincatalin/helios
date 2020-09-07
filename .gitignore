@@ -4,3 +4,4 @@ target
 checkpoint
 backup
 spark-warehouse
+postgresql_data

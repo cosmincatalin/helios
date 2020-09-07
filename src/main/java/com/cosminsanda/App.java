@@ -19,6 +19,7 @@ import scala.concurrent.duration.Duration;
 import javax.xml.parsers.SAXParser;
 import javax.xml.parsers.SAXParserFactory;
 import java.io.StringReader;
+import java.sql.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -76,11 +77,10 @@ public class App {
             .withColumn("reading", functions.expr("PARSE(raw_xml)"));
 
         readings
+            .selectExpr("raw_xml", "reading.city AS city", "reading.timestamp AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Back up data")
-            .format("parquet")
-            .option("path", conf.getString("backup.location"))
-            .option("checkpointLocation", conf.getString("spark.checkpoint.location"))
+            .foreach(new PostgreSink("jdbc:postgresql://localhost:5432/helios","postgres", ""))
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 

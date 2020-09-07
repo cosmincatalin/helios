@@ -1,13 +1,13 @@
 version: "3.8"
 
 services:
-    zookeeper-server:
+    zookeeper:
         image: "bitnami/zookeeper:latest"
         ports:
             - "2181:2181"
         environment:
             - ALLOW_ANONYMOUS_LOGIN=yes
-    kafka-server:
+    kafka:
         image: "bitnami/kafka:latest"
         ports:
             - "9092:9092"
@@ -15,12 +15,22 @@ services:
             - KAFKA_BROKER_ID=1
             - KAFKA_LISTENERS=PLAINTEXT://:9092
             - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://127.0.0.1:9092
-            - KAFKA_ZOOKEEPER_CONNECT=zookeeper-server:2181
+            - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
             - ALLOW_PLAINTEXT_LISTENER=yes
             - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
         depends_on:
-            - zookeeper-server
-    spark-primary:
+            - zookeeper
+    postgresql:
+        image: "bitnami/postgresql:11-debian-10"
+        ports:
+            - "5432:5432"
+        volumes:
+            - "./sql:/docker-entrypoint-initdb.d"
+            - "./postgresql_data:/bitnami/postgresql"
+        environment:
+            - ALLOW_EMPTY_PASSWORD=yes
+            - POSTGRESQL_DATABASE=helios
+    spark:
         network_mode: host
         image: bitnami/spark:3.0.0
         volumes:
