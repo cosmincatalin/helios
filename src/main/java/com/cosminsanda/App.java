@@ -65,14 +65,6 @@ public class App {
             }
         ));
 
-        Dataset<Row> statistics = spark
-            .readStream()
-            .option("multiLine", true)
-            .option("mode", "PERMISSIVE")
-            .json(conf.getString("statistics.location"))
-            .withColumn("updated_at_ts", functions.expr("TO_TIMESTAMP(updated_at_ts, 'yyyy-MM-dd‘T‘HH:mm:ss')"))
-            .withColumnRenamed("city", "city_s");
-
         Dataset<Row> readings = spark
             .readStream()
             .format("kafka")
