@@ -101,9 +101,9 @@ public class App {
             .selectExpr("city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Live temperature")
-            .outputMode(OutputMode.Update())
+            .outputMode(OutputMode.Complete())
             .format("console")
-            .option("truncate", "false")
+            .option("truncate", false)
             .start();
 
         spark.streams().awaitAnyTermination();
