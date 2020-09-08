@@ -29,4 +29,9 @@ _**You can see the results of processing like this:**_
 
 ### Configuration
 
-The services can be configured via the Docker images they run on using environment variables. 
+The services can be configured via the Docker images they run on using environment variables.
+
+### Notes
+
+* The streaming populations feature can be tested by placing a new valid `.json` file along the others in the `data` folder.
+* Depending on your Docker configuration and resource allocation, the application might take some time before it shows the first results on the console.  

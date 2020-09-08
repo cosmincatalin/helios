@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
     zookeeper:
-        image: "bitnami/zookeeper:latest"
+        image: "bitnami/zookeeper:3.6.1"
         ports:
             - "2181:2181"
         environment:
@@ -21,7 +21,7 @@ services:
         depends_on:
             - zookeeper
     postgresql:
-        image: "bitnami/postgresql:11-debian-10"
+        image: "bitnami/postgresql:12.4.0"
         ports:
             - "5432:5432"
         volumes:

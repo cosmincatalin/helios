@@ -20,7 +20,7 @@ public class PostgreSink {
 
         PreparedStatement statementInsert = connection.prepareStatement("INSERT INTO readings(id, raw_xml, city, timestamp, celsius, fahrenheit, active_from, active_to, active_flag) VALUES (MD5(?), ?, ?, ?, ?, ?, ?, ?, ?)");
         PreparedStatement statementUpdate = connection.prepareStatement("UPDATE readings SET active_to = ?  WHERE city = ? AND timestamp = (SELECT timestamp FROM readings WHERE city = ? AND timestamp < ? ORDER BY timestamp DESC LIMIT 1)");
-        PreparedStatement statementFlagTrue = connection.prepareStatement("UPDATE readings SET active_flag = TRUE WHERE city = ? AND timestamp = (SELECT MAX(timestamp) FROM readings WHERE city = ?)");
+        PreparedStatement statementFlagTrue = connection.prepareStatement("UPDATE readings SET active_flag = TRUE WHERE city = ? AND id = (SELECT id FROM readings WHERE city = ? ORDER BY timestamp DESC LIMIT 1)");
         PreparedStatement statementFlagFalse = connection.prepareStatement("UPDATE readings SET active_flag = FALSE  WHERE city = ? AND active_flag = TRUE");
         PreparedStatement statementReconcile = connection.prepareStatement("UPDATE readings AS r1 SET active_to = (SELECT active_from FROM readings AS r2 WHERE r2.city = r1.city AND r2.active_from > r1.active_from ORDER BY r2.active_from LIMIT 1) WHERE active_from IS NOT NULL AND city = ?");
 
