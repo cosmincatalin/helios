@@ -51,7 +51,6 @@ public class App {
                         reading.setCountry(conf.getString("cities." + reading.getCity()));
                     }
                     return RowFactory.create(
-                        reading.getCountry(),
                         reading.getCity(),
                         reading.getTimestamp(),
                         reading.getCelsius(),
@@ -62,13 +61,35 @@ public class App {
                 }
                 return null;
             }, new StructType(new StructField[] {
-                new StructField("country", StringType, true, Metadata.empty()),
                 new StructField("city", StringType, false, Metadata.empty()),
                 new StructField("timestamp", TimestampType, false, Metadata.empty()),
                 new StructField("celsius", DoubleType, false, Metadata.empty()),
                 new StructField("fahrenheit", DoubleType, false, Metadata.empty())
             }
         ));
+
+        spark
+            .readStream()
+            .format("json")
+            .option("multiline", true)
+            .load(conf.getString("mapping.location"))
+            .groupBy("city", "country")
+            .agg(functions.expr("COLLECT_LIST(STRUCT(population_m, updated_at_ts)) AS statistics"))
+            .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(statistics, (left, right) -> IF(left.updated_at_ts > right.updated_at_ts, -1, 1)), 1) AS statistic")
+            .writeStream()
+            .queryName("statistics")
+            .format("memory")
+            .outputMode(OutputMode.Complete())
+            .start();
+
+        Dataset<Row> countriesStatistics = spark
+            .sql("SELECT " +
+                "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country," +
+                "ARRAY_JOIN(TRANSFORM(SPLIT(city, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS city_p," +
+                "FIRST(statistic.population_m) OVER (PARTITION BY city ORDER BY statistic.updated_at_ts DESC) AS population " +
+                "FROM statistics")
+            .groupBy("country", "city_p")
+            .agg(functions.expr("FIRST(population) AS population"));
 
         Dataset<Row> readings = spark
             .readStream()
@@ -84,7 +105,7 @@ public class App {
             .selectExpr("raw_xml", "reading.city AS city", "reading.timestamp AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Back up data")
-            .foreach(new PostgreSink(conf.getString("postgresql.url"),conf.getString("postgresql.user"), conf.getString("postgresql.pwd")))
+            .foreachBatch(PostgreSink::persist)
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 
@@ -92,15 +113,18 @@ public class App {
             .select("reading")
             .filter("reading IS NOT NULL")
             .filter("reading.timestamp > DATE_SUB(NOW(), 3)")
-            .groupBy("reading.city", "reading.country")
+            .selectExpr("reading")
+            .groupBy("reading.city")
             .agg(functions.expr("COLLECT_LIST(STRUCT(reading.timestamp, reading.celsius, reading.fahrenheit)) AS readings"))
-            .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
-            .selectExpr("country", "city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
+            .selectExpr("city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
+            .selectExpr("city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
             .writeStream()
             .queryName("Live temperature")
             .outputMode(OutputMode.Complete())
-            .format("console")
-            .option("truncate", false)
+            .foreachBatch((Dataset<Row> batchDF, Long batchId) -> batchDF
+                .join(countriesStatistics, functions.expr("city = city_p"), "left")
+                .select("timestamp", "country", "city", "population", "celsius", "fahrenheit")
+                .show(false))
             .start();
 
         spark.streams().awaitAnyTermination();

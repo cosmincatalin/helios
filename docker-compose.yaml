@@ -35,8 +35,7 @@ services:
         image: bitnami/spark:3.0.0
         volumes:
             - "./target:/app"
-            - "./checkpoint:/app/checkpoint"
-            - "./backup:/app/backup"
+            - "./data:/app/data"
         working_dir: "/app"
         command: "spark-submit helios.jar"
         environment:
