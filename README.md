@@ -27,6 +27,10 @@ _**You can see the results of processing like this:**_
 
 `docker-compose down --remove-orphans` - This will also remove the containers.
 
+### Configuration
+
+The services can be configured via the Docker images they run on using environment variables.
+
 ## Requirements
 
 ### Fulfilled:
