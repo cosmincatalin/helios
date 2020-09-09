@@ -2,7 +2,7 @@ package com.cosminsanda;
 
 import com.typesafe.config.ConfigFactory;
 import lombok.Cleanup;
-import lombok.extern.java.Log;
+import lombok.extern.log4j.Log4j2;
 import lombok.val;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.api.java.UDF1;
@@ -24,7 +24,7 @@ import java.util.concurrent.TimeoutException;
 
 import static org.apache.spark.sql.types.DataTypes.*;
 
-@Log
+@Log4j2
 public class App {
 
     public static void main(String[] args) throws TimeoutException, StreamingQueryException {
@@ -91,7 +91,7 @@ public class App {
             .groupBy("country", "city_p")
             .agg(functions.expr("FIRST(population) AS population"));
 
-        log.info("Using Kafka at " + conf.getString("kafka.bootstrap.servers"));
+        log.info("Using Kafka bootstrap at " + conf.getString("kafka.bootstrap.servers"));
 
         val readings = spark
             .readStream()
@@ -102,6 +102,8 @@ public class App {
             .load()
             .selectExpr("CAST(value AS STRING) AS raw_xml")
             .withColumn("reading", functions.expr("PARSE(raw_xml)"));
+
+        log.info("Backing up data at " + conf.getString("postgresql.url"));
 
         readings
             .selectExpr("raw_xml", "reading.city AS city", "reading.timestamp AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
