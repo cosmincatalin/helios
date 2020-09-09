@@ -8,7 +8,7 @@ services:
         environment:
             - ALLOW_ANONYMOUS_LOGIN=yes
     kafka:
-        image: "bitnami/kafka:latest"
+        image: "bitnami/kafka:2.6.0"
         ports:
             - "9092:9092"
         environment:
@@ -31,6 +31,9 @@ services:
             - ALLOW_EMPTY_PASSWORD=yes
             - POSTGRESQL_DATABASE=helios
     spark:
+        depends_on:
+            - postgresql
+            - kafka
         network_mode: host
         image: bitnami/spark:3.0.0
         volumes:

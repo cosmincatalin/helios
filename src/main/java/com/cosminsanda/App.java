@@ -1,9 +1,9 @@
 package com.cosminsanda;
 
-import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import lombok.Cleanup;
+import lombok.extern.java.Log;
+import lombok.val;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.api.java.UDF1;
 import org.apache.spark.sql.streaming.OutputMode;
@@ -24,15 +24,15 @@ import java.util.concurrent.TimeoutException;
 
 import static org.apache.spark.sql.types.DataTypes.*;
 
+@Log
 public class App {
 
     public static void main(String[] args) throws TimeoutException, StreamingQueryException {
-        Config conf = ConfigFactory.load();
-        Logger logger = LogManager.getLogger(App.class);
+        val conf = ConfigFactory.load();
 
         org.apache.log4j.Logger.getLogger("org.apache").setLevel(org.apache.log4j.Level.WARN);
 
-        SparkSession spark = SparkSession
+        val spark = SparkSession
             .builder()
             .appName("Helios")
             .master("local")
@@ -45,7 +45,8 @@ public class App {
 
                 ReadingHandler readingHandler = new ReadingHandler();
                 try {
-                    saxParser.parse(new InputSource(new StringReader(xml)), readingHandler);
+                    @Cleanup val sr = new StringReader(xml);
+                    saxParser.parse(new InputSource(sr), readingHandler);
                     Reading reading = readingHandler.getReading();
                     if (conf.hasPath("cities." + reading.getCity())) {
                         reading.setCountry(conf.getString("cities." + reading.getCity()));
@@ -56,8 +57,7 @@ public class App {
                         reading.getCelsius(),
                         reading.getFahrenheit()
                     );
-                } catch (SAXException ex) {
-                    logger.trace(String.format("A reading had invalid format: %s", xml), ex);
+                } catch (SAXException ignored) {
                 }
                 return null;
             }, new StructType(new StructField[] {
@@ -82,7 +82,7 @@ public class App {
             .outputMode(OutputMode.Complete())
             .start();
 
-        Dataset<Row> countriesStatistics = spark
+        val countriesStatistics = spark
             .sql("SELECT " +
                 "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country," +
                 "ARRAY_JOIN(TRANSFORM(SPLIT(city, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS city_p," +
@@ -91,7 +91,9 @@ public class App {
             .groupBy("country", "city_p")
             .agg(functions.expr("FIRST(population) AS population"));
 
-        Dataset<Row> readings = spark
+        log.info("Using Kafka at " + conf.getString("kafka.bootstrap.servers"));
+
+        val readings = spark
             .readStream()
             .format("kafka")
             .option("kafka.bootstrap.servers", conf.getString("kafka.bootstrap.servers"))
