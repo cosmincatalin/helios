@@ -114,8 +114,9 @@ public class App {
             .start();
 
         readings
-            .select("reading")
             .filter("reading IS NOT NULL")
+            .selectExpr("reading", "reading.timestamp AS watermark")
+            .withWatermark("watermark", "3 days")
             .filter("reading.timestamp > DATE_SUB(NOW(), 3)")
             .selectExpr("reading")
             .groupBy("reading.city")
