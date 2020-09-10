@@ -21,7 +21,7 @@ First you need to build the project so that you end up with the application arti
 
 _**You can see the results of processing like this:**_
 
-`docker-compose logs -t -f --tail 100 spark`
+`docker-compose logs -t -f --tail 100 spark-client`
 
 ### Stopping the services
 

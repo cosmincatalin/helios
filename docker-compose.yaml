@@ -33,21 +33,39 @@ services:
         environment:
             - ALLOW_EMPTY_PASSWORD=yes
             - POSTGRESQL_DATABASE=helios
-    spark:
-        depends_on:
-            - postgresql
-            - kafka
-        image: bitnami/spark:3.0.0
+    spark-master:
+        image: bitnami/spark:3.0.1
+        ports:
+            - "8080:8080"
+    spark-worker-1:
+        image: bitnami/spark:3.0.1
         volumes:
-            - "./target:/app"
             - "./data:/app/data"
-        working_dir: "/app"
-        command: "spark-submit helios.jar"
         environment:
-            - SPARK_MODE=master
-            - SPARK_RPC_AUTHENTICATION_ENABLED=no
-            - SPARK_RPC_ENCRYPTION_ENABLED=no
-            - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
-            - SPARK_SSL_ENABLED=no
+            - SPARK_MODE=worker
+            - SPARK_MASTER_URL=spark://spark-master:7077
+            - SPARK_WORKER_MEMORY=1G
+            - SPARK_WORKER_CORES=1
+    spark-worker-2:
+        image: bitnami/spark:3.0.1
+        volumes:
+            - "./data:/app/data"
+        environment:
+            - SPARK_MODE=worker
+            - SPARK_MASTER_URL=spark://spark-master:7077
+            - SPARK_WORKER_MEMORY=1G
+            - SPARK_WORKER_CORES=1
+    spark-client:
+        image: bitnami/spark:3.0.1
+        depends_on:
+            - spark-master
+        ports:
+            - "4040:4040"
+        volumes:
+            - "./data:/app/data"
+            - "./target:/app"
+        working_dir: "/app"
+        environment:
             - KAFKA_BOOTSTRAP_SERVERS=kafka:9093
             - POSTGRESQL_URL=jdbc:postgresql://postgresql:5432/helios
+        command: "spark-submit --master spark://spark-master:7077 helios.jar"

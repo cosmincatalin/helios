@@ -1,5 +1,6 @@
 package com.cosminsanda;
 
+import com.audienceproject.util.cli.Arguments;
 import com.typesafe.config.ConfigFactory;
 import lombok.Cleanup;
 import lombok.extern.log4j.Log4j2;
@@ -29,15 +30,21 @@ public class App {
 
     public static void main(String[] args) throws TimeoutException, StreamingQueryException {
         val conf = ConfigFactory.load();
+        val arguments = new Arguments(args);
 
         org.apache.log4j.Logger.getLogger("org.apache").setLevel(org.apache.log4j.Level.WARN);
 
-        val spark = SparkSession
+        val sparkBuilder = SparkSession
             .builder()
             .appName("Helios")
-            .master("local")
-            .config("spark.sql.streaming.schemaInference", true)
-            .getOrCreate();
+            .config("spark.sql.streaming.schemaInference", true);
+
+        SparkSession spark;
+        if (arguments.isSet("local")) {
+            spark = sparkBuilder.master("local[*]").getOrCreate();
+        } else {
+            spark = sparkBuilder.getOrCreate();
+        }
 
         spark.udf().register("PARSE", (UDF1<String, Row>) xml -> {
                 SAXParserFactory factory = SAXParserFactory.newInstance();
@@ -48,9 +55,6 @@ public class App {
                     @Cleanup val sr = new StringReader(xml);
                     saxParser.parse(new InputSource(sr), readingHandler);
                     Reading reading = readingHandler.getReading();
-                    if (conf.hasPath("cities." + reading.getCity())) {
-                        reading.setCountry(conf.getString("cities." + reading.getCity()));
-                    }
                     return RowFactory.create(
                         reading.getCity(),
                         reading.getTimestamp(),
@@ -72,7 +76,7 @@ public class App {
             .readStream()
             .format("json")
             .option("multiline", true)
-            .load(conf.getString("mapping.location"))
+            .load(conf.getString("geo.data.location"))
             .groupBy("city", "country")
             .agg(functions.expr("COLLECT_LIST(STRUCT(population_m, updated_at_ts)) AS statistics"))
             .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(statistics, (left, right) -> IF(left.updated_at_ts > right.updated_at_ts, -1, 1)), 1) AS statistic")

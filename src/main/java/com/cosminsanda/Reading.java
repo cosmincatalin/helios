@@ -16,7 +16,6 @@ public class Reading {
     @Getter private String city = null;
     @Getter private Double celsius = null;
     @Getter private Double fahrenheit = null;
-    @Getter @Setter private String country = null;
 
     public Reading() {
     }
