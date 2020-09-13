@@ -58,8 +58,9 @@ public class App {
             .format("json")
             .option("multiline", true)
             .load(conf.getString("geo.data.location"));
+        processors.backUpGeoMap(geoData);
 
-        val countriesStatistics = processors.getGeoMap(geoData);
+        val countriesStatistics = processors.getLatestGeoMapStatistics();
 
         log.info("Using Kafka bootstrap at " + conf.getString("kafka.bootstrap.servers"));
 

@@ -20,7 +20,7 @@ public class Processors {
 
     private final SparkSession spark;
 
-    Dataset<Row> getGeoMap(Dataset<Row> df) throws TimeoutException {
+    void backUpGeoMap(Dataset<Row> df) throws TimeoutException {
         df
             .groupBy("city", "country")
             .agg(functions.expr("COLLECT_LIST(STRUCT(population_m, updated_at_ts)) AS statistics"))
@@ -30,7 +30,9 @@ public class Processors {
             .format("memory")
             .outputMode(OutputMode.Complete())
             .start();
+    }
 
+    Dataset<Row> getLatestGeoMapStatistics() {
         return spark
             .sql("SELECT " +
                 "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country," +
