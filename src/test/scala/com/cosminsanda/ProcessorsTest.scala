@@ -20,6 +20,8 @@ class ProcessorsTest extends AnyFunSuite with BeforeAndAfterAll {
 
     import spark.implicits._
 
+    org.apache.log4j.Logger.getLogger("org.apache").setLevel(org.apache.log4j.Level.WARN)
+
     override def afterAll() {
         spark.sparkContext.stop()
     }
