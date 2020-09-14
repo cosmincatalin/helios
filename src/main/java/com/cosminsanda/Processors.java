@@ -5,6 +5,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.val;
 import org.apache.spark.sql.*;
 import org.apache.spark.sql.streaming.OutputMode;
+import org.apache.spark.sql.streaming.StreamingQuery;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 
@@ -20,27 +21,19 @@ public class Processors {
 
     private final SparkSession spark;
 
-    void backUpGeoMap(Dataset<Row> df) throws TimeoutException {
-        df
+    StreamingQuery backUpGeoMap(Dataset<Row> df) throws TimeoutException {
+        return df
             .groupBy("city", "country")
             .agg(functions.expr("COLLECT_LIST(STRUCT(population_m, updated_at_ts)) AS statistics"))
-            .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(statistics, (left, right) -> IF(left.updated_at_ts > right.updated_at_ts, -1, 1)), 1) AS statistic")
+            .selectExpr(
+                "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country",
+                "ARRAY_JOIN(TRANSFORM(SPLIT(city, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS city_p",
+                "ELEMENT_AT(ARRAY_SORT(statistics, (left, right) -> IF(left.updated_at_ts > right.updated_at_ts, -1, 1)), 1).population_M AS population")
             .writeStream()
             .queryName("statistics")
             .format("memory")
             .outputMode(OutputMode.Complete())
             .start();
-    }
-
-    Dataset<Row> getLatestGeoMapStatistics() {
-        return spark
-            .sql("SELECT " +
-                "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country," +
-                "ARRAY_JOIN(TRANSFORM(SPLIT(city, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS city_p," +
-                "FIRST(statistic.population_m) OVER (PARTITION BY city ORDER BY statistic.updated_at_ts DESC) AS population " +
-                "FROM statistics")
-            .groupBy("country", "city_p")
-            .agg(functions.expr("FIRST(population) AS population"));
     }
 
     public Dataset<Row> aggregateTemperatures(Dataset<Row> readings) {
@@ -76,16 +69,10 @@ public class Processors {
         return null;
     }
 
-    @RequiredArgsConstructor
-    static class ConsoleOutput {
-
-        private final Dataset<Row> countriesStatistics;
-
-        public Dataset<Row> prepareOutput(Dataset<Row> df) {
-            return df
-                .join(this.countriesStatistics, functions.expr("city = city_p"), "left")
-                .select("timestamp", "country", "city", "population", "celsius", "fahrenheit");
-        }
-
+    public Dataset<Row> prepareOutput(Dataset<Row> df) {
+        return df
+            .join(spark.sql("SELECT country, city_p, population FROM statistics"), functions.expr("city = city_p"), "left")
+            .select("timestamp", "country", "city", "population", "celsius", "fahrenheit");
     }
+
 }

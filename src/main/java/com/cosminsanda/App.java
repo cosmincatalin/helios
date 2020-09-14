@@ -60,8 +60,6 @@ public class App {
             .load(conf.getString("geo.data.location"));
         processors.backUpGeoMap(geoData);
 
-        val countriesStatistics = processors.getLatestGeoMapStatistics();
-
         log.info("Using Kafka bootstrap at " + conf.getString("kafka.bootstrap.servers"));
 
         val readings = spark
@@ -84,14 +82,12 @@ public class App {
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 
-        val consoleOutput = new Processors.ConsoleOutput(countriesStatistics);
-
         processors
             .aggregateTemperatures(readings)
             .writeStream()
             .queryName("Live temperature")
             .outputMode(OutputMode.Complete())
-            .foreachBatch((Dataset<Row> batchDF, Long batchId) -> consoleOutput.prepareOutput(batchDF).show(false))
+            .foreachBatch((Dataset<Row> batchDF, Long batchId) -> processors.prepareOutput(batchDF).show(false))
             .start();
 
         spark.streams().awaitAnyTermination();
