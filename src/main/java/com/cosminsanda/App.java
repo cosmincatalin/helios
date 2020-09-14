@@ -2,24 +2,21 @@ package com.cosminsanda;
 
 import com.audienceproject.util.cli.Arguments;
 import com.typesafe.config.ConfigFactory;
-import lombok.Cleanup;
 import lombok.extern.log4j.Log4j2;
 import lombok.val;
-import org.apache.spark.sql.*;
+import org.apache.spark.sql.Dataset;
+import org.apache.spark.sql.Row;
+import org.apache.spark.sql.SparkSession;
 import org.apache.spark.sql.api.java.UDF1;
+import org.apache.spark.sql.functions;
 import org.apache.spark.sql.streaming.OutputMode;
 import org.apache.spark.sql.streaming.StreamingQueryException;
 import org.apache.spark.sql.streaming.Trigger;
 import org.apache.spark.sql.types.Metadata;
 import org.apache.spark.sql.types.StructField;
 import org.apache.spark.sql.types.StructType;
-import org.xml.sax.InputSource;
-import org.xml.sax.SAXException;
 import scala.concurrent.duration.Duration;
 
-import javax.xml.parsers.SAXParser;
-import javax.xml.parsers.SAXParserFactory;
-import java.io.StringReader;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -46,25 +43,9 @@ public class App {
             spark = sparkBuilder.getOrCreate();
         }
 
-        spark.udf().register("PARSE", (UDF1<String, Row>) xml -> {
-                SAXParserFactory factory = SAXParserFactory.newInstance();
-                SAXParser saxParser = factory.newSAXParser();
+        val processors = new Processors(spark);
 
-                ReadingHandler readingHandler = new ReadingHandler();
-                try {
-                    @Cleanup val sr = new StringReader(xml);
-                    saxParser.parse(new InputSource(sr), readingHandler);
-                    Reading reading = readingHandler.getReading();
-                    return RowFactory.create(
-                        reading.getCity(),
-                        reading.getTimestamp(),
-                        reading.getCelsius(),
-                        reading.getFahrenheit()
-                    );
-                } catch (SAXException ignored) {
-                }
-                return null;
-            }, new StructType(new StructField[] {
+        spark.udf().register("PARSE", (UDF1<String, Row>) Processors::extractXml, new StructType(new StructField[] {
                 new StructField("city", StringType, false, Metadata.empty()),
                 new StructField("timestamp", TimestampType, false, Metadata.empty()),
                 new StructField("celsius", DoubleType, false, Metadata.empty()),
@@ -72,28 +53,12 @@ public class App {
             }
         ));
 
-        spark
+        val geoData = spark
             .readStream()
             .format("json")
             .option("multiline", true)
-            .load(conf.getString("geo.data.location"))
-            .groupBy("city", "country")
-            .agg(functions.expr("COLLECT_LIST(STRUCT(population_m, updated_at_ts)) AS statistics"))
-            .selectExpr("country", "city", "ELEMENT_AT(ARRAY_SORT(statistics, (left, right) -> IF(left.updated_at_ts > right.updated_at_ts, -1, 1)), 1) AS statistic")
-            .writeStream()
-            .queryName("statistics")
-            .format("memory")
-            .outputMode(OutputMode.Complete())
-            .start();
-
-        val countriesStatistics = spark
-            .sql("SELECT " +
-                "ARRAY_JOIN(TRANSFORM(SPLIT(country, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS country," +
-                "ARRAY_JOIN(TRANSFORM(SPLIT(city, ' '), x -> CONCAT(UPPER(SUBSTRING(x, 1, 1)), LOWER(SUBSTRING(x, 2)))), ' ') AS city_p," +
-                "FIRST(statistic.population_m) OVER (PARTITION BY city ORDER BY statistic.updated_at_ts DESC) AS population " +
-                "FROM statistics")
-            .groupBy("country", "city_p")
-            .agg(functions.expr("FIRST(population) AS population"));
+            .load(conf.getString("geo.data.location"));
+        processors.backUpGeoMap(geoData);
 
         log.info("Using Kafka bootstrap at " + conf.getString("kafka.bootstrap.servers"));
 
@@ -117,23 +82,12 @@ public class App {
             .trigger(Trigger.ProcessingTime(Duration.create(1, TimeUnit.MINUTES)))
             .start();
 
-        readings
-            .filter("reading IS NOT NULL")
-            .selectExpr("reading", "reading.timestamp AS watermark")
-            .withWatermark("watermark", "3 days")
-            .filter("reading.timestamp > DATE_SUB(NOW(), 3)")
-            .selectExpr("reading")
-            .groupBy("reading.city")
-            .agg(functions.expr("COLLECT_LIST(STRUCT(reading.timestamp, reading.celsius, reading.fahrenheit)) AS readings"))
-            .selectExpr("city", "ELEMENT_AT(ARRAY_SORT(readings, (left, right) -> IF(left.timestamp > right.timestamp, -1, 1)), 1) AS reading")
-            .selectExpr("city", "DATE_FORMAT(reading.timestamp, 'yyyy-MM-dd') AS timestamp", "reading.celsius AS celsius", "reading.fahrenheit AS fahrenheit")
+        processors
+            .aggregateTemperatures(readings)
             .writeStream()
             .queryName("Live temperature")
             .outputMode(OutputMode.Complete())
-            .foreachBatch((Dataset<Row> batchDF, Long batchId) -> batchDF
-                .join(countriesStatistics, functions.expr("city = city_p"), "left")
-                .select("timestamp", "country", "city", "population", "celsius", "fahrenheit")
-                .show(false))
+            .foreachBatch((Dataset<Row> batchDF, Long batchId) -> processors.prepareOutput(batchDF).show(false))
             .start();
 
         spark.streams().awaitAnyTermination();
