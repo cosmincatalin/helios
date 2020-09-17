@@ -4,8 +4,13 @@ import org.xml.sax.Attributes;
 import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
+import java.sql.Timestamp;
 import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 public class ReadingHandler extends DefaultHandler {
 
@@ -13,6 +18,8 @@ public class ReadingHandler extends DefaultHandler {
     private String elementValue;
     private Boolean readingTemperatures = false;
     private String unit;
+
+    private final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss");
 
     @Override
     public void characters(char[] ch, int start, int length) {
@@ -45,14 +52,19 @@ public class ReadingHandler extends DefaultHandler {
     public void endElement(String uri, String localName, String qName) throws SAXException {
         switch (qName) {
             case "city":
-                reading.setCity(elementValue);
+                reading.setCity(
+                    Arrays.stream(elementValue.split(" "))
+                        .map((part) -> part.substring(0, 1).toUpperCase() + part.substring(1).toLowerCase())
+                        .collect( Collectors.joining( " " ) )
+                );
                 break;
             case "temperature":
                 readingTemperatures = false;
                 break;
             case "measured_at_ts":
                 try {
-                    reading.setTimestamp(elementValue);
+                    Date parsedDate = dateFormat.parse(elementValue);
+                    reading.setTimestamp(new Timestamp(parsedDate.getTime()));
                 } catch (ParseException ex) {
                     throw new SAXException(ex);
                 }
@@ -60,7 +72,7 @@ public class ReadingHandler extends DefaultHandler {
             case "value":
                 if (readingTemperatures && unit.equals("celsius")) {
                     try {
-                        reading.setCelsius(elementValue);
+                        reading.setCelsius(Double.parseDouble(elementValue));
                     } catch (Exception ex) {
                         throw new SAXException(ex);
                     }
@@ -68,7 +80,7 @@ public class ReadingHandler extends DefaultHandler {
                 }
                 if (readingTemperatures && unit.equals("fahrenheit")) {
                     try {
-                        reading.setFahrenheit(elementValue);
+                        reading.setFahrenheit(Double.parseDouble(elementValue));
                     } catch (Exception ex) {
                         throw new SAXException(ex);
                     }
@@ -95,10 +107,10 @@ public class ReadingHandler extends DefaultHandler {
         }
 
         if (reading.getCelsius() != null && reading.getFahrenheit() == null) {
-            reading.setFahrenheit(String.format(Locale.US, "%.2f", reading.getCelsius() * 1.8 + 32));
+            reading.setFahrenheit(Double.parseDouble(String.format(Locale.US, "%.2f", reading.getCelsius() * 1.8 + 32)));
         }
         if (reading.getCelsius() == null && reading.getFahrenheit() != null) {
-            reading.setCelsius(String.format(Locale.US, "%.2f", (reading.getFahrenheit() - 32) / 1.8));
+            reading.setCelsius(Double.parseDouble(String.format(Locale.US, "%.2f", (reading.getFahrenheit() - 32) / 1.8)));
         }
     }
 

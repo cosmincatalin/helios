@@ -2,40 +2,24 @@ package com.cosminsanda;
 
 
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.io.Serializable;
 import java.sql.Timestamp;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.stream.Collectors;
 
-public class Reading {
-    @Getter private Timestamp timestamp = null;
-    @Getter private String city = null;
-    @Getter private Double celsius = null;
-    @Getter private Double fahrenheit = null;
+@NoArgsConstructor
+public class Reading implements Serializable {
+    @Getter @Setter private Timestamp timestamp = null;
+    @Getter @Setter private String city = null;
+    @Getter @Setter private Double celsius = null;
+    @Getter @Setter private Double fahrenheit = null;
 
-    public Reading() {
-    }
-
-    public void setCity(String city) {
-        this.city = Arrays.stream(city.split(" "))
-            .map((part) -> part.substring(0, 1).toUpperCase() + part.substring(1).toLowerCase())
-            .collect( Collectors.joining( " " ) );
-    }
-
-    public void setTimestamp(String date) throws ParseException {
-        Date parsedDate = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss").parse(date);
-        this.timestamp = new Timestamp(parsedDate.getTime());
-    }
-
-    public void setFahrenheit(String fahrenheit) {
-        this.fahrenheit = Double.parseDouble(fahrenheit);
-    }
-
-    public void setCelsius(String celsius) {
-        this.celsius = Double.parseDouble(celsius);
+    public Reading(String city, Timestamp timestamp, Double fahrenheit, Double celsius) {
+        this.city = city;
+        this.timestamp = timestamp;
+        if (fahrenheit == null && celsius == null) throw new IllegalArgumentException("One of fahrenheit or celsius must be set");
+        if (fahrenheit != null) this.fahrenheit = fahrenheit;
+        if (celsius != null) this.celsius = celsius;
     }
 }
