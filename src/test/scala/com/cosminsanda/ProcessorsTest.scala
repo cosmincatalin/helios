@@ -31,7 +31,7 @@ class ProcessorsTest extends AnyFunSuite with BeforeAndAfterAll {
         spark.sparkContext.stop()
     }
 
-    test("the geo mapping statistics is working correctly") {
+    test("the geo mapping statistics are working correctly") {
         val source = MemoryStream[GeoStatistic]
         source.addData(
             GeoStatistic("COPENHAGEN", "DENMARK", 5.8, "2020-08-02T18:00:00"),
@@ -103,6 +103,48 @@ class ProcessorsTest extends AnyFunSuite with BeforeAndAfterAll {
         assert(spark.sql("SELECT timestamp FROM aggregates WHERE city == 'Copenhagen'").collectAsList().get(0).getString(0) == sdf.format(Timestamp.from(Instant.now())), "Again, the most recent instance must be shown")
 
         spark.sql("DROP TABLE `aggregates`")
+    }
+
+    test("parse xml correctly") {
+        val rows = List(
+            """<?xml version="1.0" encoding="UTF-8"?>
+              |<data>
+              |    <city>CoPenHagen</city>
+              |    <temperature>
+              |        <value unit="celsius">27</value>
+              |    </temperature>
+              |    <measured_at_ts>2020-08-01T18:00:00</measured_at_ts>
+              |</data>""".stripMargin,
+            """<?xml version="1.0" encoding="UTF-8"?>
+              |<data>
+              |    <city>loNdon</city>
+              |    <temperature>
+              |        <value unit="fahrenheit">68</value>
+              |    </temperature>
+              |    <measured_at_ts>2020-08-01T18:05:00</measured_at_ts>
+              |</data>""".stripMargin,
+            """<?xml version="1.0" encoding="UTF-8"?>
+              |<data>
+              |    <city>London</city>
+              |    <temperature>
+              |        <value unit="celsius">26.5asd</value>
+              |    </temperature>
+              |    <measured_at_ts>2020-08-02T20:04:00</measured_at_ts>
+              |</data>""".stripMargin,
+            """<?xml version="1.0" encoding="UTF-8"?>
+              |<data>
+              |    <city>Copenhagen</city
+              |    <temperature>
+              |        <value unit="celsius">28</value>
+              |    </temperature>
+              |    <measured_at_ts>2020-08-03T18:00:00</measured_at_ts>
+              |</data>""".stripMargin
+        ).map(Processors.extractXml)
+        rows.foreach(println)
+//        assert(rows.count(_ == null) == 2, "Only two successfully parsed")
+//        assert(rows.filter(_ != null).count(_.getAs[String](0) == "Copenhagen") == 1, "Copenhagen parsed correctly")
+//        assert(rows.filter(_ != null).count(_.getAs[String](0) == "London") == 1, "Copenhagen parsed correctly")
+//        assert(rows.filter(_ != null).filter(_.getAs[String](0) == "London").count(_.getAs[Double](2) == 20.0) == 1, "London celsius inferred correctly")
     }
 
 }
